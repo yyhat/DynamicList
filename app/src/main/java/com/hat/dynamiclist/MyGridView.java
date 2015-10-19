@@ -3,8 +3,11 @@ package com.hat.dynamiclist;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Handler;
+import android.os.Message;
 import android.text.Layout;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -18,8 +21,7 @@ import android.widget.ImageView;
 /**
  * Created by anting.hu on 2015/10/19.
  */
-public class MyGridView extends GridView
-{
+public class MyGridView extends GridView {
     private int mTouchSlop; //当前系统默认滑动距离
 
     private int mDragPointY; // 在点击点当前item控件中偏移
@@ -29,7 +31,7 @@ public class MyGridView extends GridView
     private int mCoordOffsetX = -1;// gridView在屏幕中的偏移位置
 
     private Rect mTempRect = new Rect();
-    private DragShadowBuilder mDropListener;
+    private DropListener mDropListener;
 
     private PopView mPopView;
 
@@ -39,38 +41,111 @@ public class MyGridView extends GridView
 
     private int mDragPos; // which item is being dragged
     private int mFirstDragPos; // where was the dragged item originally
-    private int mDragPointY; // at what offset inside the item did the user grab
     private int mHeight;
+    private int mUpperBound;
+    private int mLowerBound;
+    private ListMoveHandler mListMoveHandler;
+    private int mTempY;
+    private int mTempX;
+    private View mDragItem;
+
 
     public MyGridView(Context context) {
         this(context, null, 0);
     }
 
-    public MyGridView(Context context, AttributeSet attrs)
-    {
+    public MyGridView(Context context, AttributeSet attrs) {
         this(context, attrs, 0);
     }
 
-    public MyGridView(Context context, AttributeSet attrs, int defStyleAttr)
-    {
-        super(context, attrs,defStyleAttr);
+    public MyGridView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
         mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         mPopView = new PopView(context);
+        mListMoveHandler = new ListMoveHandler();
     }
+
+    //触屏事件
+    @Override
+    public boolean onTouchEvent(MotionEvent ev) {
+        if (mDropListener != null && mPopView.mDragView != null) {
+            int action = ev.getAction();
+            switch (ev.getAction()) {
+                //拖动结束
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+
+                    Rect r = mTempRect;
+                    mPopView.mDragView.getDrawingRect(r);
+                    mPopView.stopDragging();
+
+                    if (mDropListener != null && mDragPos >= 0 && mDragPos < getCount()) {
+                        mDropListener.drop(mFirstDragPos, mDragPos);
+                    }
+
+                    if (mListMoveHandler.mIsStart) {
+                        mListMoveHandler.stop();
+                    }
+
+                    unExpandViews(false);
+                    break;
+
+                case MotionEvent.ACTION_MOVE:
+                    Log.i("test", "onTouchEvent ACTION_MOVE");
+                    int x = (int) ev.getX();
+                    int y = (int) ev.getY();
+
+                    mTempX = x;
+                    mTempY = y;
+
+                    if (y - mDragPointY < 0) //超出屏幕最上面
+                    {
+                        if (!mListMoveHandler.mIsStart) {
+                            mListMoveHandler.start(false);
+                        } else if (mListMoveHandler.mIsUp) {
+                            mListMoveHandler.stop();
+                            mListMoveHandler.start(false);
+                        }
+                    } else if (y - mDragPointY + mItemHeightNormal + mCoordOffsetY > 480) //应该读取真实高度
+                    {
+                        if (!mListMoveHandler.mIsStart) {
+                            mListMoveHandler.start(true);
+                        } else if (mListMoveHandler.mIsUp) {
+                            mListMoveHandler.stop();
+                            mListMoveHandler.start(true);
+                        }
+                    } else {
+                        if (mListMoveHandler.mIsStart)
+                            mListMoveHandler.stop();
+                    }
+
+                    mPopView.dragView(x, y);
+                    int itemNum = getItemForPosition(x, y);
+                    if (itemNum > 0) {
+                        if (action == MotionEvent.ACTION_DOWN || itemNum != mDragPos) {
+                            mDragPos = itemNum;
+                            doExpansion();
+                        }
+                    }
+                    break;
+            }
+        }
+        return super.onTouchEvent(ev);
+    }
+
 
     //触屏 拦截
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        switch (ev.getAction())
-        {
+        switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 //得到点击在父控件中的位置
-                int x = (int)ev.getX();
-                int y = (int)ev.getY();
+                int x = (int) ev.getX();
+                int y = (int) ev.getY();
 
                 //得到点击到item的索引
                 int itemIndex = pointToPosition(x, y);
-                if(itemIndex == AdapterView.INVALID_POSITION)
+                if (itemIndex == AdapterView.INVALID_POSITION)
                     break;
                 View item = getChildAt(itemIndex - getFirstVisiblePosition());
 
@@ -78,11 +153,11 @@ public class MyGridView extends GridView
                 mDragPointY = y - item.getTop();
 
                 //只初始化一次即可
-                if(mCoordOffsetX == -1)
-                    mCoordOffsetX =((int)ev.getRawX()) - x;
+                if (mCoordOffsetX == -1)
+                    mCoordOffsetX = ((int) ev.getRawX()) - x;
 
-                if(mCoordOffsetY == -1)
-                    mCoordOffsetY =((int)ev.getRawY()) - y;
+                if (mCoordOffsetY == -1)
+                    mCoordOffsetY = ((int) ev.getRawY()) - y;
 
                 Rect r = mTempRect;
                 r.left = item.getLeft();
@@ -94,7 +169,7 @@ public class MyGridView extends GridView
                 mItemWidthHalf = (r.right - r.left) / 2;// xiaochp
                 mItemHeightNormal = r.bottom - r.top;
 
-                if(x > r.left && x < r.right) {
+                if (x > r.left && x < r.right) {
                     //todo
                     item.setDrawingCacheEnabled(true);
 
@@ -103,30 +178,177 @@ public class MyGridView extends GridView
                     mDragPos = itemIndex;
                     mFirstDragPos = mDragPos;
                     mHeight = getHeight();
+                    int touchSlop = mTouchSlop;
+                    mUpperBound = Math.min(y - touchSlop, mHeight / 3);
+                    mLowerBound = Math.max(y + touchSlop, mHeight * 2 / 3);
+
                     return false;
                 }
+                mPopView.mDragView = null;
+                break;
+        }
         return super.onInterceptTouchEvent(ev);
     }
 
-    //触屏事件
-    @Override
-    public boolean onTouchEvent(MotionEvent ev) {
-        if(mDragView != null)
-        {
-            switch (ev.getAction())
-            {
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
 
+    // 需要调整以适应新的拖动算法
+    private int getItemForPosition(int x, int y) {
+        int adjustedy = y - mDragPointY + mItemHeightHalf; // 中心点
+        int adjustedx = x - mDragPointX + mItemWidthHalf; // 中心点
+        int pos = myPointToPosition(adjustedx, adjustedy);
+        return pos;
+    }
+
+    /*
+	 * Restore size and visibility for all listitems
+	 */
+    private void unExpandViews(boolean deletion) {
+        for (int i = 0; ; i++) {
+            View v = getChildAt(i);
+            if (v == null) {
+                if (deletion) {
+                    // HACK force update of mItemCount
+                    int position = getFirstVisiblePosition();
+                    int y = getChildAt(0).getTop();
+                    setAdapter(getAdapter());
+                    // xiaochp setSelectionFromTop(position, y);
+                    // end hack
+                }
+                layoutChildren(); // force children to be recreated where needed
+                v = getChildAt(i);
+                if (v == null) {
                     break;
+                }
             }
+            ViewGroup.LayoutParams params = v.getLayoutParams();
+            params.height = mItemHeightNormal;
+            v.setLayoutParams(params);
+            v.setVisibility(View.VISIBLE);
         }
-        return super.onTouchEvent(ev);
     }
 
 
 
-        public interface DropListener {
-            void drop(int from, int to);
+
+    /*
+	 * Adjust visibility and size to make it appear as though an item is being
+	 * dragged around and other items are making room for it: If dropping the
+	 * item would result in it still being in the same place, then make the
+	 * dragged listitem's size normal, but make the item invisible. Otherwise,
+	 * if the dragged listitem is still on screen, make it as small as possible
+	 * and expand the item below the insert point. If the dragged item is not on
+	 * screen, only expand the item below the current insertpoint.
+	 */
+    private void doExpansion() {
+        int childnum = mDragPos - getFirstVisiblePosition();
+        if (mDragPos > mFirstDragPos) {
+            childnum++;
         }
+
+        View first = getChildAt(mFirstDragPos - getFirstVisiblePosition());
+        Log.v("vv.equals(mDragItem>>>", ">>first=" + first);
+        for (int i = 0; ; i++) {
+            View vv = getChildAt(i);
+            if (vv == null) {
+                Log.v("vv.equals(mDragItem>>>", "break>>i=" + i);
+                break;
+            }
+            int height = mItemHeightNormal;
+            int visibility = View.VISIBLE;
+
+            if (vv.equals(mDragItem) && first != null) {
+                visibility = View.INVISIBLE;
+            }
+            ViewGroup.LayoutParams params = vv.getLayoutParams();
+            params.height = height;
+            vv.setLayoutParams(params);
+            vv.setVisibility(visibility);
+        }
+    }
+
+    /*
+    * pointToPosition() doesn't consider invisible views, but we need to, so
+    * implement a slightly different version.
+    */
+    private int myPointToPosition(int x, int y) {
+        Rect frame = mTempRect;
+        final int count = getChildCount();
+        for (int i = count - 1; i >= 0; i--) {
+            final View child = getChildAt(i);
+            child.getHitRect(frame);
+            if (frame.contains(x, y)) {
+                return getFirstVisiblePosition() + i;
+            }
+        }
+        return INVALID_POSITION;
+    }
+
+    public interface DropListener {
+        void drop(int from, int to);
+    }
+
+    public void setDropListener(DropListener onDrop) {
+        // TODO Auto-generated method stub
+        mDropListener = onDrop;
+    }
+
+    private class ListMoveHandler extends Handler {
+
+        private final int SCROLLDISTANCE = 20;
+        private final int SCROLLDURATION = 200;
+        private final int MESSAGEWHAT = 111;
+        private final int MESSAGEDELAY = 100;
+
+        private boolean mIsStart = false;  //todo
+        private boolean mIsUp = false; //todo
+
+        public void start(boolean isUp) {
+            mIsUp = isUp;
+            this.mIsStart = true;
+            this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
+        }
+
+        public void stop() {
+            this.mIsStart = false;
+            this.removeMessages(MESSAGEWHAT);
+        }
+
+        public void myDragView() {
+            MyGridView.this.mPopView.dragView(MyGridView.this.mTempX,
+                    MyGridView.this.mTempY);
+
+            int itemnum = getItemForPosition(MyGridView.this.mTempX,
+                    MyGridView.this.mTempY);
+            if (itemnum >= 0) {
+                if (itemnum != mDragPos) {
+
+                    MyGridView.this.mDragPos = itemnum;
+
+                    MyGridView.this.doExpansion();
+                }
+            }
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+
+            Log.i("test", "handleMessage: " + msg.what);
+            super.handleMessage(msg);
+
+            if (mIsUp) {
+                myDragView();
+                // GridViewInterceptor.this.smoothScrollBy(SCROLLDISTANCE,
+                // SCROLLDURATION);
+            } else {
+                myDragView();
+                // GridViewInterceptor.this.smoothScrollBy(-SCROLLDISTANCE,
+                // SCROLLDURATION);
+            }
+
+            if (mIsStart) {
+                this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
+            }
+        }
+
+    }
 }

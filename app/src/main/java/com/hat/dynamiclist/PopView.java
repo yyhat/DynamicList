@@ -2,6 +2,7 @@ package com.hat.dynamiclist;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -14,7 +15,7 @@ public class PopView {
 
     private WindowManager.LayoutParams mWindowParams; //拖动的Viwe参数
     private WindowManager mWindowManager;
-    private ImageView mDragView; //拖动View
+    public ImageView mDragView; //拖动View
     private Bitmap mDragBitmap; //当前拖动时的Bitmap
     private Context mContext;
 
@@ -31,6 +32,7 @@ public class PopView {
      */
     public void startDragging(Bitmap bm, int x, int y)
     {
+        stopDragging();
         mWindowParams = new WindowManager.LayoutParams();
         mWindowParams.gravity = Gravity.TOP | Gravity.LEFT;
 
@@ -41,7 +43,12 @@ public class PopView {
         mWindowParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
 
         //flags
+        mWindowParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
         //format
+        mWindowParams.format = PixelFormat.TRANSLUCENT;
 
         mDragBitmap = bm;
         mWindowParams.windowAnimations = 0;

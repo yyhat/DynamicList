@@ -7,58 +7,28 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Adapter;
+import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.zip.Inflater;
 
 /**
  * Created by anting.hu on 2015/10/19.
  */
-public class MyGridAdapter extends BaseAdapter {
-    int[] viewImage =
-            {
-                    R.drawable.hos_case, R.drawable.hos_chat, R.drawable.hos_eye, R.drawable.hos_eye_2,
-                    R.drawable.hos_instro, R.drawable.hos_nav, R.drawable.hos_other, R.drawable.hos_pro,
-                    R.drawable.hos_promotion
-            };
-
-    int[] viewStr =
-            {
-                    R.string.hos_case,
-                    R.string.hos_chat,
-                    R.string.hos_subject,
-                    R.string.hos_nav,
-                    R.string.hos_yuyue,
-                    R.string.hos_chat,
-                    R.string.hos_shuang,
-                    R.string.hos_kaiyanjiao,
-                    R.string.hos_case
-            };
+public class MyGridAdapter extends ArrayAdapter<Map<String, Object>> {
 
     private Context mContext;
+    private ArrayList<Map<String, Object>> array;
 
-    @Override
-    public int getCount() {
-        return viewImage.length;
-    }
-
-    @Override
-    public Object getItem(int position) {
-        return null;
-    }
-
-    @Override
-    public long getItemId(int position) {
-        return position;
-    }
-
-
-    public MyGridAdapter(Context context) {
-        super();
-        mContext = context;
-
+    public MyGridAdapter(Context context, ArrayList<Map<String, Object>> data) {
+        super(context, R.layout.list_item, data);
+        mContext= context;
+        array = data;
     }
 
     @Override
@@ -67,7 +37,7 @@ public class MyGridAdapter extends BaseAdapter {
         if(convertView == null)
         {
             LayoutInflater inflater = LayoutInflater.from(mContext);
-            convertView = inflater.inflate(R.layout.list_item, null);
+            convertView = inflater.inflate(R.layout.list_item, parent, false);
             hodler = new MyHodler();
             hodler.mTxtView = (TextView)convertView.findViewById(R.id.txtView);
             hodler.mImgView = (ImageView)convertView.findViewById(R.id.imgView);
@@ -78,8 +48,8 @@ public class MyGridAdapter extends BaseAdapter {
             hodler = (MyHodler)convertView.getTag();
         }
 
-        hodler.mTxtView.setText(viewStr[position]);
-        hodler.mImgView.setImageDrawable(mContext.getResources().getDrawable(viewImage[position]));
+        hodler.mTxtView.setText(array.get(position).get("str").toString());
+        hodler.mImgView.setImageResource(Integer.parseInt(array.get(position).get("img").toString()));
 
         return convertView;
     }

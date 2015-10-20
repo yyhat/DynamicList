@@ -42,12 +42,10 @@ public class MyGridView extends GridView {
     private int mDragPos; // which item is being dragged
     private int mFirstDragPos; // where was the dragged item originally
     private int mHeight;
-    private int mUpperBound;
-    private int mLowerBound;
-    private ListMoveHandler mListMoveHandler;
-    private int mTempY;
-    private int mTempX;
-    private View mDragItem;
+//    private ListMoveHandler mListMoveHandler;
+    private int mTempY; //在move过程中临时保存位置
+    private int mTempX; //在move过程中临时保存位置
+    private View mDragItem; //拖动的时候，隐藏当前位置 item
 
 
     public MyGridView(Context context) {
@@ -60,9 +58,11 @@ public class MyGridView extends GridView {
 
     public MyGridView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        //是一个距离，表示滑动的时候，手的移动要大于这个距离才开始移动控件。
         mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         mPopView = new PopView(context);
-        mListMoveHandler = new ListMoveHandler();
+//        mListMoveHandler = new ListMoveHandler();
+        Log.i("test", "mTouchSlop: " + mTouchSlop);
     }
 
     //触屏事件
@@ -82,47 +82,49 @@ public class MyGridView extends GridView {
                     if (mDropListener != null && mDragPos >= 0 && mDragPos < getCount()) {
                         mDropListener.drop(mFirstDragPos, mDragPos);
                     }
-
-                    if (mListMoveHandler.mIsStart) {
-                        mListMoveHandler.stop();
-                    }
+//
+//                    if (mListMoveHandler.mIsStart) {
+//                        mListMoveHandler.stop();
+//                    }
 
                     unExpandViews(false);
                     break;
 
                 case MotionEvent.ACTION_MOVE:
-                    Log.i("test", "onTouchEvent ACTION_MOVE");
                     int x = (int) ev.getX();
                     int y = (int) ev.getY();
 
                     mTempX = x;
                     mTempY = y;
+//
+//                    if (y - mDragPointY < 0) //超出屏幕最上面
+//                    {
+//                        if (!mListMoveHandler.mIsStart) {
+//                            mListMoveHandler.start(false);
+//                        } else if (mListMoveHandler.mIsUp) {
+//                            mListMoveHandler.stop();
+//                            mListMoveHandler.start(false);
+//                        }
+//                    } else if (y - mDragPointY + mItemHeightNormal + mCoordOffsetY > 480) //应该读取真实高度
+//                    {
+//                        if (!mListMoveHandler.mIsStart) {
+//                            mListMoveHandler.start(true);
+//                        } else if (mListMoveHandler.mIsUp) {
+//                            mListMoveHandler.stop();
+//                            mListMoveHandler.start(true);
+//                        }
+//                    } else {
+//                        if (mListMoveHandler.mIsStart)
+//                            mListMoveHandler.stop();
+//                    }
 
-                    if (y - mDragPointY < 0) //超出屏幕最上面
-                    {
-                        if (!mListMoveHandler.mIsStart) {
-                            mListMoveHandler.start(false);
-                        } else if (mListMoveHandler.mIsUp) {
-                            mListMoveHandler.stop();
-                            mListMoveHandler.start(false);
-                        }
-                    } else if (y - mDragPointY + mItemHeightNormal + mCoordOffsetY > 480) //应该读取真实高度
-                    {
-                        if (!mListMoveHandler.mIsStart) {
-                            mListMoveHandler.start(true);
-                        } else if (mListMoveHandler.mIsUp) {
-                            mListMoveHandler.stop();
-                            mListMoveHandler.start(true);
-                        }
-                    } else {
-                        if (mListMoveHandler.mIsStart)
-                            mListMoveHandler.stop();
-                    }
-
-                    mPopView.dragView(x, y);
+                    mPopView.dragView( x - mDragPointX + mCoordOffsetX, y - mDragPointY + mCoordOffsetY);
                     int itemNum = getItemForPosition(x, y);
-                    if (itemNum > 0) {
-                        if (action == MotionEvent.ACTION_DOWN || itemNum != mDragPos) {
+                    if (itemNum > 0)
+                    {
+                        if (itemNum != mDragPos)
+                        {
+                            Log.i("test", "itemNum=" + itemNum + ", mDragPos=" + mDragPos);
                             mDragPos = itemNum;
                             doExpansion();
                         }
@@ -147,7 +149,10 @@ public class MyGridView extends GridView {
                 int itemIndex = pointToPosition(x, y);
                 if (itemIndex == AdapterView.INVALID_POSITION)
                     break;
+
+                //必须要-getFirstVisiblePosition， 因为gridView和ListView会回收View
                 View item = getChildAt(itemIndex - getFirstVisiblePosition());
+                mDragItem = item;
 
                 mDragPointX = x - item.getLeft();
                 mDragPointY = y - item.getTop();
@@ -159,6 +164,7 @@ public class MyGridView extends GridView {
                 if (mCoordOffsetY == -1)
                     mCoordOffsetY = ((int) ev.getRawY()) - y;
 
+                //得到Item大小
                 Rect r = mTempRect;
                 r.left = item.getLeft();
                 r.right = item.getRight();
@@ -169,8 +175,10 @@ public class MyGridView extends GridView {
                 mItemWidthHalf = (r.right - r.left) / 2;// xiaochp
                 mItemHeightNormal = r.bottom - r.top;
 
+                Log.i("test","onInterceptTouchEvent itemIndex=" + itemIndex );
+                // 点击在Item控件范围内
                 if (x > r.left && x < r.right) {
-                    //todo
+                    //提高响应速度
                     item.setDrawingCacheEnabled(true);
 
                     Bitmap bitmap = Bitmap.createBitmap(item.getDrawingCache());
@@ -178,9 +186,6 @@ public class MyGridView extends GridView {
                     mDragPos = itemIndex;
                     mFirstDragPos = mDragPos;
                     mHeight = getHeight();
-                    int touchSlop = mTouchSlop;
-                    mUpperBound = Math.min(y - touchSlop, mHeight / 3);
-                    mLowerBound = Math.max(y + touchSlop, mHeight * 2 / 3);
 
                     return false;
                 }
@@ -239,12 +244,8 @@ public class MyGridView extends GridView {
 	 * and expand the item below the insert point. If the dragged item is not on
 	 * screen, only expand the item below the current insertpoint.
 	 */
-    private void doExpansion() {
-        int childnum = mDragPos - getFirstVisiblePosition();
-        if (mDragPos > mFirstDragPos) {
-            childnum++;
-        }
-
+    private void doExpansion()
+    {
         View first = getChildAt(mFirstDragPos - getFirstVisiblePosition());
         Log.v("vv.equals(mDragItem>>>", ">>first=" + first);
         for (int i = 0; ; i++) {
@@ -291,64 +292,56 @@ public class MyGridView extends GridView {
         // TODO Auto-generated method stub
         mDropListener = onDrop;
     }
-
-    private class ListMoveHandler extends Handler {
-
-        private final int SCROLLDISTANCE = 20;
-        private final int SCROLLDURATION = 200;
-        private final int MESSAGEWHAT = 111;
-        private final int MESSAGEDELAY = 100;
-
-        private boolean mIsStart = false;  //todo
-        private boolean mIsUp = false; //todo
-
-        public void start(boolean isUp) {
-            mIsUp = isUp;
-            this.mIsStart = true;
-            this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
-        }
-
-        public void stop() {
-            this.mIsStart = false;
-            this.removeMessages(MESSAGEWHAT);
-        }
-
-        public void myDragView() {
-            MyGridView.this.mPopView.dragView(MyGridView.this.mTempX,
-                    MyGridView.this.mTempY);
-
-            int itemnum = getItemForPosition(MyGridView.this.mTempX,
-                    MyGridView.this.mTempY);
-            if (itemnum >= 0) {
-                if (itemnum != mDragPos) {
-
-                    MyGridView.this.mDragPos = itemnum;
-
-                    MyGridView.this.doExpansion();
-                }
-            }
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-
-            Log.i("test", "handleMessage: " + msg.what);
-            super.handleMessage(msg);
-
-            if (mIsUp) {
-                myDragView();
-                // GridViewInterceptor.this.smoothScrollBy(SCROLLDISTANCE,
-                // SCROLLDURATION);
-            } else {
-                myDragView();
-                // GridViewInterceptor.this.smoothScrollBy(-SCROLLDISTANCE,
-                // SCROLLDURATION);
-            }
-
-            if (mIsStart) {
-                this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
-            }
-        }
-
-    }
+//
+//    private class ListMoveHandler extends Handler {
+//
+//        private final int SCROLLDISTANCE = 20;
+//        private final int SCROLLDURATION = 200;
+//        private final int MESSAGEWHAT = 111;
+//        private final int MESSAGEDELAY = 100;
+//
+//        private boolean mIsStart = false;  //todo
+//        private boolean mIsUp = false; //todo
+//
+//        public void start(boolean isUp) {
+//            mIsUp = isUp;
+//            this.mIsStart = true;
+//            this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
+//        }
+//
+//        public void stop() {
+//            this.mIsStart = false;
+//            this.removeMessages(MESSAGEWHAT);
+//        }
+//
+//        public void myDragView() {
+//            MyGridView.this.mPopView.dragView(MyGridView.this.mTempX,
+//                    MyGridView.this.mTempY);
+//
+//            int itemnum = getItemForPosition(MyGridView.this.mTempX,
+//                    MyGridView.this.mTempY);
+//            if (itemnum >= 0) {
+//
+//                if (itemnum != equals) {
+//                    Log.i("test", "myDragView itemnum=" + itemnum + ", mDragPos=" + mDragPos);
+//                    MyGridView.this.mDragPos = itemnum;
+//
+//                    MyGridView.this.doExpansion();
+//                }
+//            }
+//        }
+//
+//        @Override
+//        public void handleMessage(Message msg) {
+//
+//            Log.i("test", "handleMessage: " + msg.what);
+//            super.handleMessage(msg);
+//
+//            myDragView();
+//
+//            if (mIsStart) {
+//                this.sendEmptyMessageDelayed(MESSAGEWHAT, MESSAGEDELAY);
+//            }
+//        }
+//    }
 }
